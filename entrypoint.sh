@@ -1,5 +1,5 @@
 #!/bin/sh
-# 注意：V1.6 引入了智能筛选逻辑，不符合要求的节点将自动退出
+# 注意：V2.1 引入了智能筛选逻辑，不符合要求的节点将自动退出
 
 # ==========================================
 # 1. 基础参数提取 (环境变量注入)
@@ -54,20 +54,26 @@ EOF
     IP=$(echo "$INFO" | jq -r '.ip')
 
     # 3.2 核心逻辑：国家筛选 (Case Insensitive)
-    # 将变量转为大写进行对比
     T_UP=$(echo "$TARGET_COUNTRY" | tr '[:lower:]' '[:upper:]')
     R_UP=$(echo "$REAL_COUNTRY_CODE" | tr '[:lower:]' '[:upper:]')
 
     if [ "$T_UP" != "ANY" ] && [ "$T_UP" != "$R_UP" ]; then
         echo "💀 [淘汰] 国籍不符！目标: $T_UP, 实际: $R_UP. 正在撤离..."
-        
-        # 发送销毁通知
+
+        # 上报淘汰状态到 Dashboard
+        if [ -n "$COMMAND_CENTER_URL" ]; then
+            curl -s -m 5 -X POST "$COMMAND_CENTER_URL/api/report" \
+              -H "Content-Type: application/json" \
+              -H "X-Report-Token: ${REPORT_SECRET}" \
+              -d "{\"node_name\":\"$NODE_NAME\",\"status\":\"eliminated\",\"ip\":\"$IP\",\"country\":\"$R_UP\",\"country_name\":\"$REAL_COUNTRY_NAME\",\"city\":\"$CITY\",\"org\":\"$ORG\",\"port\":$REMOTE_PORT}" \
+              > /dev/null 2>&1
+        fi
+
         if [ -n "$DINGTALK_URL" ]; then
             MSG="### 💀 【${DING_KEY}-节点销毁】\n\n**国籍不匹配，自动下线！**\n\n📍 **实际位置**: $REAL_COUNTRY_NAME ($R_UP)\n🎯 **目标位置**: $T_UP\n🆔 **代号**: $NODE_NAME\n🌐 **IP**: $IP\n\n*(系统已自动回收该卡槽资源)*"
             curl -s -H "Content-Type: application/json" -d "{\"msgtype\":\"markdown\",\"markdown\":{\"title\":\"${DING_KEY}-节点销毁\",\"text\":\"$MSG\"}}" "$DINGTALK_URL" > /dev/null 2>&1
         fi
-        
-        # 强制自杀，停止计费
+
         pkill -9 frpc
         pkill -9 gost
         exit 1
@@ -78,7 +84,17 @@ EOF
     SPEED_BPS=$(curl -m 10 -s -w "%{speed_download}" -o /dev/null https://speed.cloudflare.com/__down?bytes=5242880 || echo "0")
     SPEED_MBS=$(echo "$SPEED_BPS" | awk '{printf "%.2f", $1/1024/1024}')
 
-    # 3.4 最终钉钉上线播报
+    # 3.4 上报上线信息到 Dashboard
+    if [ -n "$COMMAND_CENTER_URL" ]; then
+        curl -s -m 5 -X POST "$COMMAND_CENTER_URL/api/report" \
+          -H "Content-Type: application/json" \
+          -H "X-Report-Token: ${REPORT_SECRET}" \
+          -d "{\"node_name\":\"$NODE_NAME\",\"status\":\"online\",\"ip\":\"$IP\",\"country\":\"$R_UP\",\"country_name\":\"$REAL_COUNTRY_NAME\",\"city\":\"$CITY\",\"org\":\"$ORG\",\"speed\":\"$SPEED_MBS\",\"port\":$REMOTE_PORT}" \
+          > /dev/null 2>&1
+        echo "📡 [上报] 节点信息已发送至 Dashboard"
+    fi
+
+    # 3.5 最终钉钉上线播报
     if [ -n "$DINGTALK_URL" ]; then
         PROXY_LINK="socks5h://${PROXY_USER}:${PROXY_PASS}@${FRPS_ADDR}:${REMOTE_PORT}"
         
