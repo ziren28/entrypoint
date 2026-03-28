@@ -1,6 +1,6 @@
 #!/bin/sh
 # ==========================================
-# Salad Agent v2.0 — 适配 v4.1 C2 中控
+# Salad Agent v2.6 — 适配 v4.1 C2 中控
 #
 # 变更 (相对 v1.6):
 #   - 心跳间隔 60s (中控 ALIVE_THRESHOLD=300s, 留足余量)
@@ -8,6 +8,7 @@
 #   - 启动速度优化: 服务先拉起, 情报并行采集
 #   - FRP 断线自动重启 (watchdog)
 #   - 日志格式统一, 方便 Salad Cloud 查看
+#   - SSH 端口 = 代理端口 + 1
 # ==========================================
 
 set -e
@@ -30,6 +31,7 @@ TARGET_COUNTRY=${TARGET_COUNTRY:-"ANY"}
 
 SSH_PUB_KEY=${SSH_MASTER_PUB_KEY:-""}
 SSH_REM_PORT=${SSH_REMOTE_PORT:-"0"}
+# SSH 端口 = 代理端口 + 1 (由中控 _build_payload 注入)
 
 DISPLAY_ADDR=${FRPS_DISPLAY_ADDR:-$FRPS_ADDR}
 
